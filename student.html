@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal - Bright Minds</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-primary mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="index.html">Bright Minds Match</a>
+        <button id="logout-btn" class="btn btn-sm btn-light" style="display:none;">Logout</button>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row justify-content-center">
+        
+        <div id="auth-section" class="col-md-6">
+            <div class="card p-4">
+                <h3 class="text-center">Student Portal</h3>
+                <ul class="nav nav-tabs mb-3" id="studentTab">
+                    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#login">Login</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#signup">Sign Up</a></li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="login">
+                        <input type="email" id="stu-login-email" class="form-control mb-2" placeholder="Email">
+                        <input type="password" id="stu-login-pass" class="form-control mb-2" placeholder="Password">
+                        <button onclick="studentLogin()" class="btn btn-primary w-100">Login</button>
+                    </div>
+                    <div class="tab-pane fade" id="signup">
+                        <input type="text" id="stu-fname" class="form-control mb-2" placeholder="First Name">
+                        <input type="text" id="stu-lname" class="form-control mb-2" placeholder="Last Name">
+                        <input type="email" id="stu-email" class="form-control mb-2" placeholder="Email">
+                        <input type="password" id="stu-pass" class="form-control mb-2" placeholder="Choose Password">
+                        <button onclick="studentSignUp()" class="btn btn-success w-100">Sign Up</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="dashboard-section" class="col-md-10" style="display:none;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card p-4 mb-4">
+                        <h3>Find Your Match</h3>
+                        <p>Describe your learning style, needs, and personality below.</p>
+                        <textarea id="ai-prompt" class="form-control mb-3" rows="5" placeholder="Example: I need help with Calculus. I am a visual learner and I get anxious easily, so I need someone patient and kind..."></textarea>
+                        <button onclick="runAIMatch()" class="btn btn-warning w-100">Find My Perfect Match</button>
+                    </div>
+                    <div class="card p-4">
+                         <h4>Your Chats</h4>
+                         <div id="chat-list" class="list-group"></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h4>AI Recommendations</h4>
+                    <div id="match-results" class="list-group">
+                        <p class="text-muted">Results will appear here...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
