@@ -9,9 +9,9 @@
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
     <div class="container">
-        <a class="navbar-brand" href="index.html">Bright Minds Match</a>
+        <a class="navbar-brand fw-bold" href="index.html">Bright Minds Match</a>
         <div>
             <a href="student.html" class="btn btn-light me-2">Student Portal</a>
             <a href="tutor.html" class="btn btn-outline-light">Tutor Portal</a>
@@ -19,22 +19,29 @@
     </div>
 </nav>
 
-<header class="bg-light text-center py-5">
-    <h1>Find Your Perfect Tutoring Match</h1>
-    <p class="lead">AI-powered connections for a brighter future.</p>
+<header class="bg-light text-center py-5 border-bottom">
+    <div class="container">
+        <h1 class="display-4 fw-bold">Find Your Perfect Tutoring Match</h1>
+        <p class="lead text-muted">AI-powered connections for a brighter future.</p>
+    </div>
 </header>
 
 <div class="container mt-5">
     <h2 class="mb-4 text-center">Our Top Tutors</h2>
     <div id="tutor-list" class="row g-4">
-        <p class="text-center">Loading tutors...</p>
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Loading tutors...</p>
+        </div>
     </div>
 </div>
 
+<!-- Firebase Compat Scripts -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics-compat.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
