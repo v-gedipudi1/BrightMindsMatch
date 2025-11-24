@@ -11,15 +11,21 @@
 
 <nav class="navbar navbar-dark bg-primary mb-4">
     <div class="container">
+        <!-- Brand -->
         <a class="navbar-brand" href="index.html">Bright Minds Match</a>
-        <button id="logout-btn" class="btn btn-sm btn-light" style="display:none;">Logout</button>
+        
+        <!-- Right Side: Back Button & Logout -->
+        <div class="d-flex align-items-center">
+            <a href="index.html" class="btn btn-outline-light me-2">Back to Home</a>
+            <button id="logout-btn" class="btn btn-warning btn-sm fw-bold" style="display:none;">Logout</button>
+        </div>
     </div>
 </nav>
 
 <div class="container">
     <div class="row justify-content-center">
         
-        <!-- Auth Section -->
+        <!-- Auth Section (Login/Signup) -->
         <div id="auth-section" class="col-md-6">
             <div class="card p-4 shadow">
                 <h3 class="text-center mb-3">Student Portal</h3>
@@ -28,39 +34,52 @@
                     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#signup">Sign Up</a></li>
                 </ul>
                 <div class="tab-content">
+                    <!-- Login Tab -->
                     <div class="tab-pane fade show active" id="login">
-                        <input type="email" id="stu-login-email" class="form-control mb-2" placeholder="Email">
-                        <input type="password" id="stu-login-pass" class="form-control mb-3" placeholder="Password">
-                        <button onclick="handleLogin('student')" class="btn btn-primary w-100">Login</button>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small">Email Address</label>
+                            <input type="email" id="stu-login-email" class="form-control" placeholder="name@example.com">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small">Password</label>
+                            <input type="password" id="stu-login-pass" class="form-control" placeholder="Password">
+                        </div>
+                        <button id="stu-login-btn" onclick="handleLogin('student')" class="btn btn-primary w-100 py-2">Login</button>
                     </div>
+                    
+                    <!-- Signup Tab -->
                     <div class="tab-pane fade" id="signup">
                         <input type="text" id="stu-fname" class="form-control mb-2" placeholder="First Name">
                         <input type="text" id="stu-lname" class="form-control mb-2" placeholder="Last Name">
                         <input type="email" id="stu-email" class="form-control mb-2" placeholder="Email">
                         <input type="password" id="stu-pass" class="form-control mb-3" placeholder="Choose Password">
-                        <button onclick="studentSignUp()" class="btn btn-success w-100">Sign Up</button>
+                        <button id="stu-signup-btn" onclick="studentSignUp()" class="btn btn-success w-100">Sign Up</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Dashboard -->
+        <!-- Dashboard (Hidden until logged in) -->
         <div id="dashboard-section" class="col-md-10" style="display:none;">
             <div class="row">
+                <!-- Left: Search & Chats -->
                 <div class="col-md-6">
                     <div class="card p-4 shadow mb-4">
                         <h3 class="text-primary">Find Your Match</h3>
-                        <p>Describe your learning style, needs, and personality.</p>
+                        <p class="text-muted">Describe your learning style, needs, and personality.</p>
                         <textarea id="ai-prompt" class="form-control mb-3" rows="5" placeholder="Example: I need help with Calculus. I am a visual learner and I get anxious easily, so I need someone patient and kind..."></textarea>
                         <button onclick="runAIMatch()" class="btn btn-warning w-100 text-white fw-bold">Find My Perfect Match</button>
                     </div>
+                    
                     <div class="card p-4 shadow">
                          <h4>Your Chats</h4>
-                         <div id="chat-list" class="list-group">
-                             <p class="text-muted">No chats yet.</p>
+                         <div id="chat-list" class="list-group list-group-flush">
+                             <div class="text-center text-muted py-3">Loading chats...</div>
                          </div>
                     </div>
                 </div>
+                
+                <!-- Right: Results -->
                 <div class="col-md-6">
                     <h4 class="mb-3">AI Recommendations</h4>
                     <div id="match-results" class="list-group">
@@ -73,6 +92,7 @@
     </div>
 </div>
 
+<!-- Firebase Scripts -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
