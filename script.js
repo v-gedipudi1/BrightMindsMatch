@@ -42,7 +42,6 @@ auth.onAuthStateChanged(user => {
 });
 
 // --- 3. AUTHENTICATION ---
-
 function handleLogin(type) {
     const emailId = type === 'tutor' ? 'tutor-login-email' : 'stu-login-email';
     const passId = type === 'tutor' ? 'tutor-login-pass' : 'stu-login-pass';
@@ -102,7 +101,7 @@ function tutorSignUp() {
     }).catch(err => alert("Error: " + err.message));
 }
 
-// --- 4. TUTOR PROFILE (DEBUGGED VERSION) ---
+// --- 4. TUTOR PROFILE (ROBUST SAVE) ---
 
 function loadTutorProfile(uid) {
     db.collection('users').doc(uid).get().then(doc => {
@@ -124,44 +123,37 @@ async function saveTutorProfile() {
     const file = document.getElementById('pfp-upload').files[0];
     const saveBtn = document.getElementById('save-btn');
 
-    saveBtn.innerText = "Saving Text...";
+    saveBtn.innerText = "Saving...";
     saveBtn.disabled = true;
 
     try {
-        // STEP 1: Save Text Info FIRST
-        // This is usually fast. If this fails, it's a Database Rule issue.
+        // 1. Save Text Data First (Most important)
         await db.collection('users').doc(user.uid).update({
             bio: bio,
             education: edu
         });
-        
-        // STEP 2: Handle Image
+
+        // 2. Try Image Upload
         if (file) {
             saveBtn.innerText = "Uploading Image...";
             const storageRef = storage.ref('pfps/' + user.uid);
-            
-            // Upload
             await storageRef.put(file);
-            
-            // Get URL
             const url = await storageRef.getDownloadURL();
             
-            // Save URL to Database
+            // Save URL to Firestore
             await db.collection('users').doc(user.uid).update({ pfp: url });
-            
             document.getElementById('current-pfp').src = url;
         }
 
-        alert("Profile Saved Successfully!");
+        alert("Profile Saved!");
 
     } catch (error) {
-        console.error(error);
+        console.error("Save Error:", error);
+        // If it's a storage permission error, the text still saved!
         if(error.code === 'storage/unauthorized') {
-            alert("Error: Permission Denied. Please check your Firebase STORAGE Rules.");
-        } else if (error.code === 'permission-denied') {
-             alert("Error: Permission Denied. Please check your Firebase DATABASE Rules.");
+             alert("Profile Text Saved! \n\nHowever, the Image failed to upload. This is likely a 'Firebase Storage Rules' issue. Please enable Storage rules in the Firebase Console.");
         } else {
-            alert("Error saving: " + error.message);
+             alert("Profile Saved (Partial): " + error.message);
         }
     } finally {
         saveBtn.innerText = "Save Profile & Go Live";
@@ -188,111 +180,3 @@ if (document.getElementById('tutor-list')) {
                             <h5 class="card-title">${data.firstName} ${data.lastName}</h5>
                             <h6 class="text-primary mb-2">${data.education || 'Tutor'}</h6>
                             <p class="card-text text-muted">${data.bio.substring(0, 100)}...</p>
-                        </div>
-                    </div>
-                </div>`;
-            }
-        });
-    });
-}
-
-function runAIMatch() {
-    const promptInput = document.getElementById('ai-prompt');
-    const resultsDiv = document.getElementById('match-results');
-    
-    if(!promptInput.value) { alert("Please describe your needs."); return; }
-
-    resultsDiv.innerHTML = "<div class='text-center p-3'>Scanning...</div>";
-    const keywords = promptInput.value.toLowerCase().split(' ').filter(w => w.length > 3); 
-
-    db.collection('users').where('role', '==', 'tutor').get().then(snapshot => {
-        let scoredTutors = [];
-        snapshot.forEach(doc => {
-            const tutor = doc.data();
-            let score = 0;
-            if (tutor.bio && tutor.education) {
-                const text = (tutor.bio + " " + tutor.education).toLowerCase();
-                keywords.forEach(word => { if (text.includes(word)) score += 10; });
-                score += Math.random(); 
-                scoredTutors.push({ ...tutor, id: doc.id, score: score });
-            }
-        });
-
-        scoredTutors.sort((a, b) => b.score - a.score);
-        resultsDiv.innerHTML = "";
-        
-        if(scoredTutors.length === 0) { resultsDiv.innerHTML = "<div class='alert alert-warning'>No matches found.</div>"; return; }
-
-        scoredTutors.slice(0, 5).forEach(t => {
-            resultsDiv.innerHTML += `
-            <a href="#" onclick="startChat('${t.id}', '${t.firstName}')" class="list-group-item list-group-item-action">
-                <div class="d-flex justify-content-between">
-                    <h5 class="mb-1">${t.firstName} ${t.lastName}</h5>
-                    <span class="badge bg-success">Match</span>
-                </div>
-                <p class="mb-1 small text-muted">${t.education}</p>
-                <small class="text-primary">Click to Chat</small>
-            </a>`;
-        });
-    });
-}
-
-// --- 6. CHAT ---
-function startChat(otherId, otherName) {
-    const user = auth.currentUser;
-    if(!user) return;
-    const chatId = [user.uid, otherId].sort().join('_');
-    
-    db.collection('chats').doc(chatId).set({
-        participants: [user.uid, otherId],
-        participantNames: firebase.firestore.FieldValue.arrayUnion(otherName),
-        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true }).then(() => {
-        window.location.href = `chat.html?id=${chatId}&name=${otherName}`;
-    });
-}
-
-function loadChats(uid) {
-    const list = document.getElementById('chat-list');
-    if(!list) return;
-
-    db.collection('chats').where('participants', 'array-contains', uid).orderBy('lastUpdated', 'desc').onSnapshot(snap => {
-        list.innerHTML = "";
-        if(snap.empty) { list.innerHTML = "<div class='p-3 text-muted'>No chats yet.</div>"; return; }
-        snap.forEach(doc => {
-            list.innerHTML += `<a href="chat.html?id=${doc.id}" class="list-group-item list-group-item-action">Open Chat</a>`;
-        });
-    });
-}
-
-if (window.location.pathname.includes('chat.html')) {
-    const params = new URLSearchParams(window.location.search);
-    const chatId = params.get('id');
-    const chatName = params.get('name');
-    if(chatName) document.getElementById('chat-header').innerText = "Chat with " + chatName;
-
-    if(chatId) {
-        db.collection('chats').doc(chatId).collection('messages').orderBy('timestamp').onSnapshot(snap => {
-            const box = document.getElementById('messages-box');
-            box.innerHTML = "";
-            snap.forEach(doc => {
-                const d = doc.data();
-                const isMe = d.sender === auth.currentUser?.uid;
-                box.innerHTML += `<div class="${isMe ? 'text-end' : 'text-start'} mb-2"><span class="d-inline-block p-2 rounded ${isMe ? 'bg-primary text-white' : 'bg-secondary text-white'}">${d.text}</span></div>`;
-            });
-            box.scrollTop = box.scrollHeight;
-        });
-    }
-}
-
-function sendMessage() {
-    const text = document.getElementById('msg-input').value;
-    const chatId = new URLSearchParams(window.location.search).get('id');
-    if(text && chatId) {
-        db.collection('chats').doc(chatId).collection('messages').add({
-            text: text, sender: auth.currentUser.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        db.collection('chats').doc(chatId).update({ lastUpdated: firebase.firestore.FieldValue.serverTimestamp() });
-        document.getElementById('msg-input').value = "";
-    }
-}
