@@ -1,5 +1,4 @@
 // --- 1. CONFIGURATION ---
-// I have updated this with the keys you provided.
 const firebaseConfig = {
     apiKey: "AIzaSyAycejhGoOM7ha5svMqwBtVQNlrHt01A_M",
     authDomain: "brightmindsmatch.firebaseapp.com",
@@ -10,16 +9,117 @@ const firebaseConfig = {
     measurementId: "G-Y3FHMSR84J"
 };
 
-// Initialize Firebase (Compat version for HTML usage)
-firebase.initializeApp(firebaseConfig);
+// Initialize Firebase safely
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
-const analytics = firebase.analytics();
 
-// --- 2. AUTHENTICATION LOGIC ---
+// --- 2. AUTH STATE LISTENER (CRITICAL FOR REDIRECTS) ---
+auth.onAuthStateChanged(user => {
+    const authSection = document.getElementById('auth-section');
+    const dashboardSection = document.getElementById('dashboard-section');
+    const logoutBtn = document.getElementById('logout-btn');
 
-// Tutor Sign Up
+    if (user) {
+        console.log("User is signed in:", user.email);
+        
+        // 1. Switch UI to Dashboard
+        if (authSection) authSection.style.display = 'none';
+        if (dashboardSection) dashboardSection.style.display = 'block';
+        
+        // 2. Show Logout Button
+        if (logoutBtn) {
+            logoutBtn.style.display = 'block';
+            logoutBtn.onclick = () => {
+                auth.signOut().then(() => {
+                    alert("Logged out successfully.");
+                    window.location.reload();
+                });
+            };
+        }
+        
+        // 3. Load Data based on page
+        if (window.location.pathname.includes('tutor.html')) {
+            loadTutorProfile(user.uid);
+        }
+        loadChats(user.uid);
+        
+    } else {
+        console.log("No user signed in.");
+        // Ensure dashboard is hidden if not logged in
+        if (dashboardSection) dashboardSection.style.display = 'none';
+        if (authSection) authSection.style.display = 'block';
+    }
+});
+
+// --- 3. AUTHENTICATION FUNCTIONS ---
+
+function handleLogin(type) {
+    const emailId = type === 'tutor' ? 'tutor-login-email' : 'stu-login-email';
+    const passId = type === 'tutor' ? 'tutor-login-pass' : 'stu-login-pass';
+    const btnId = type === 'tutor' ? 'tutor-login-btn' : 'stu-login-btn'; // Ensure buttons have IDs
+    
+    const email = document.getElementById(emailId).value;
+    const password = document.getElementById(passId).value;
+    const btn = document.getElementById(btnId);
+
+    if (!email || !password) {
+        alert("Please enter both email and password.");
+        return;
+    }
+
+    // UI Feedback
+    if(btn) {
+        btn.innerText = "Logging in...";
+        btn.disabled = true;
+    }
+
+    auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+            // Success: onAuthStateChanged will handle the redirect
+            console.log("Login success");
+        })
+        .catch(err => {
+            alert("Login Failed: " + err.message);
+            if(btn) {
+                btn.innerText = "Login";
+                btn.disabled = false;
+            }
+        });
+}
+
+function studentSignUp() {
+    const fname = document.getElementById('stu-fname').value;
+    const lname = document.getElementById('stu-lname').value;
+    const email = document.getElementById('stu-email').value;
+    const password = document.getElementById('stu-pass').value;
+    const btn = document.getElementById('stu-signup-btn');
+
+    if(!fname || !lname || !email || !password) {
+        alert("Please fill in all fields");
+        return;
+    }
+
+    if(btn) btn.innerText = "Creating Account...";
+
+    auth.createUserWithEmailAndPassword(email, password).then((cred) => {
+        return db.collection('users').doc(cred.user.uid).set({
+            firstName: fname,
+            lastName: lname,
+            email: email,
+            role: 'student'
+        });
+    }).then(() => {
+        alert("Account created! You are now logged in.");
+    }).catch(err => {
+        alert("Error: " + err.message);
+        if(btn) btn.innerText = "Sign Up";
+    });
+}
+
 function tutorSignUp() {
     const fname = document.getElementById('tutor-fname').value;
     const lname = document.getElementById('tutor-lname').value;
@@ -30,10 +130,9 @@ function tutorSignUp() {
         return;
     }
 
-    const password = fname + "2025!"; // Default Password Logic
+    const password = fname + "2025!"; 
 
     auth.createUserWithEmailAndPassword(email, password).then((cred) => {
-        // Create User Document in Firestore
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname,
             lastName: lname,
@@ -41,88 +140,22 @@ function tutorSignUp() {
             role: 'tutor',
             bio: '',
             education: '',
-            pfp: 'https://via.placeholder.com/150' // Default PFP
+            pfp: 'https://via.placeholder.com/150' 
         });
     }).then(() => {
-        alert("Tutor account created! Your password is: " + password);
-        window.location.reload();
+        alert("Tutor account created! Password: " + password);
     }).catch(err => alert("Error: " + err.message));
 }
 
-// Student Sign Up
-function studentSignUp() {
-    const fname = document.getElementById('stu-fname').value;
-    const lname = document.getElementById('stu-lname').value;
-    const email = document.getElementById('stu-email').value;
-    const password = document.getElementById('stu-pass').value;
-
-    if(!fname || !lname || !email || !password) {
-        alert("Please fill in all fields");
-        return;
-    }
-
-    auth.createUserWithEmailAndPassword(email, password).then((cred) => {
-        return db.collection('users').doc(cred.user.uid).set({
-            firstName: fname,
-            lastName: lname,
-            email: email,
-            role: 'student'
-        });
-    }).then(() => {
-        alert("Student account created!");
-        window.location.reload();
-    }).catch(err => alert("Error: " + err.message));
-}
-
-// Login Function (Used by both)
-function handleLogin(type) {
-    const emailId = type === 'tutor' ? 'tutor-login-email' : 'stu-login-email';
-    const passId = type === 'tutor' ? 'tutor-login-pass' : 'stu-login-pass';
-    
-    const email = document.getElementById(emailId).value;
-    const password = document.getElementById(passId).value;
-
-    auth.signInWithEmailAndPassword(email, password)
-        .then(() => {
-            console.log("Logged in successfully");
-            // The onAuthStateChanged listener will handle the UI switch
-        })
-        .catch(err => alert("Login Failed: " + err.message));
-}
-
-// Global Auth Listener
-auth.onAuthStateChanged(user => {
-    if (user) {
-        console.log("User is signed in:", user.uid);
-        
-        // Hide auth forms, Show dashboard
-        if(document.getElementById('auth-section')) document.getElementById('auth-section').style.display = 'none';
-        if(document.getElementById('dashboard-section')) document.getElementById('dashboard-section').style.display = 'block';
-        
-        // Show Logout Button
-        const logoutBtn = document.getElementById('logout-btn');
-        if(logoutBtn) {
-            logoutBtn.style.display = 'block';
-            logoutBtn.onclick = () => auth.signOut().then(() => window.location.reload());
-        }
-        
-        // Page Specific Data Loading
-        if (window.location.pathname.includes('tutor.html')) loadTutorProfile(user.uid);
-        
-        // Load chats for both students and tutors
-        loadChats(user.uid);
-    }
-});
-
-// --- 3. TUTOR PROFILE LOGIC ---
+// --- 4. TUTOR PROFILE & HOME LIST ---
 
 function loadTutorProfile(uid) {
     db.collection('users').doc(uid).get().then(doc => {
         if (doc.exists) {
             const data = doc.data();
-            document.getElementById('tutor-bio').value = data.bio || "";
-            document.getElementById('tutor-edu').value = data.education || "";
-            if(data.pfp) document.getElementById('current-pfp').src = data.pfp;
+            if(document.getElementById('tutor-bio')) document.getElementById('tutor-bio').value = data.bio || "";
+            if(document.getElementById('tutor-edu')) document.getElementById('tutor-edu').value = data.education || "";
+            if(document.getElementById('current-pfp') && data.pfp) document.getElementById('current-pfp').src = data.pfp;
         }
     });
 }
@@ -139,159 +172,116 @@ function saveTutorProfile() {
     saveBtn.innerText = "Saving...";
     saveBtn.disabled = true;
 
-    // Helper to update Firestore
     const updateFirestore = (url) => {
         let updateData = { bio: bio, education: edu };
         if(url) updateData.pfp = url;
 
         db.collection('users').doc(user.uid).update(updateData).then(() => {
-            alert("Profile Saved! You are now listed on the homepage.");
+            alert("Profile Saved!");
             saveBtn.innerText = "Save Profile & Go Live";
             saveBtn.disabled = false;
         }).catch(err => {
-            alert("Error saving profile: " + err.message);
-            saveBtn.innerText = "Save Profile & Go Live";
+            alert("Error: " + err.message);
             saveBtn.disabled = false;
         });
     };
 
     if (file) {
-        // Upload Image
         const storageRef = storage.ref('pfps/' + user.uid);
-        storageRef.put(file).then(snapshot => {
-            return snapshot.ref.getDownloadURL();
-        }).then(url => {
-            document.getElementById('current-pfp').src = url;
-            updateFirestore(url);
-        }).catch(err => {
-            alert("Image upload failed: " + err.message);
-            saveBtn.disabled = false;
-        });
+        storageRef.put(file).then(snapshot => snapshot.ref.getDownloadURL())
+            .then(url => {
+                document.getElementById('current-pfp').src = url;
+                updateFirestore(url);
+            });
     } else {
         updateFirestore(null);
     }
 }
 
-// --- 4. HOME PAGE LIST LOGIC ---
-
-// Runs on index.html
-if (window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/')) {
+// Check for Home Page List
+if (document.getElementById('tutor-list')) {
     const list = document.getElementById('tutor-list');
-    if (list) {
-        db.collection('users').where('role', '==', 'tutor').get().then(snapshot => {
-            list.innerHTML = "";
-            if(snapshot.empty) {
-                list.innerHTML = "<p class='text-center'>No tutors found yet. Be the first to sign up!</p>";
-                return;
-            }
-
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                // Only show tutors who have filled out their bio
-                if (data.bio && data.bio.length > 0) {
-                    list.innerHTML += `
-                    <div class="col-md-4">
-                        <div class="card h-100 shadow-sm">
-                            <img src="${data.pfp || 'https://via.placeholder.com/150'}" class="card-img-top" style="height:200px; object-fit:cover;">
-                            <div class="card-body">
-                                <h5 class="card-title">${data.firstName} ${data.lastName}</h5>
-                                <h6 class="text-primary mb-2">${data.education || 'Tutor'}</h6>
-                                <p class="card-text text-muted">${data.bio.substring(0, 100)}...</p>
-                            </div>
+    db.collection('users').where('role', '==', 'tutor').get().then(snapshot => {
+        list.innerHTML = "";
+        if(snapshot.empty) {
+            list.innerHTML = "<p class='text-center'>No tutors found yet.</p>";
+            return;
+        }
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.bio) {
+                list.innerHTML += `
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm">
+                        <img src="${data.pfp || 'https://via.placeholder.com/150'}" class="card-img-top" style="height:200px; object-fit:cover;">
+                        <div class="card-body">
+                            <h5 class="card-title">${data.firstName} ${data.lastName}</h5>
+                            <h6 class="text-primary mb-2">${data.education || 'Tutor'}</h6>
+                            <p class="card-text text-muted">${data.bio.substring(0, 100)}...</p>
                         </div>
-                    </div>`;
-                }
-            });
-        }).catch(err => {
-            console.error(err);
-            list.innerHTML = "<p class='text-center text-danger'>Error loading tutors. Check console.</p>";
+                    </div>
+                </div>`;
+            }
         });
-    }
+    });
 }
 
-// --- 5. AI MATCHING ALGORITHM ---
-
+// --- 5. AI MATCHING ---
 function runAIMatch() {
     const promptInput = document.getElementById('ai-prompt');
     const resultsDiv = document.getElementById('match-results');
     
-    if(!promptInput.value) {
-        alert("Please describe what you need help with!");
-        return;
-    }
+    if(!promptInput.value) { alert("Please describe what you need help with."); return; }
 
-    resultsDiv.innerHTML = "<div class='text-center'>Scanning database... <div class='spinner-border spinner-border-sm'></div></div>";
-
-    const promptText = promptInput.value.toLowerCase();
-    // Simple tokenizer: remove common words, keep keywords > 3 chars
-    const keywords = promptText.split(' ').filter(w => w.length > 3); 
+    resultsDiv.innerHTML = "<div class='text-center p-3'>Scanning...</div>";
+    
+    const keywords = promptInput.value.toLowerCase().split(' ').filter(w => w.length > 3); 
 
     db.collection('users').where('role', '==', 'tutor').get().then(snapshot => {
         let scoredTutors = [];
-
         snapshot.forEach(doc => {
             const tutor = doc.data();
-            const tutorId = doc.id;
-            
-            // AI Matching Logic
             let score = 0;
+            // Simple keyword matching
             if (tutor.bio && tutor.education) {
-                const tutorText = (tutor.bio + " " + tutor.education).toLowerCase();
-                
-                keywords.forEach(word => {
-                    // Exact keyword match logic
-                    if (tutorText.includes(word)) score += 10; 
-                });
-                
-                // Add tiny random float to prevent exact ties
+                const text = (tutor.bio + " " + tutor.education).toLowerCase();
+                keywords.forEach(word => { if (text.includes(word)) score += 10; });
                 score += Math.random(); 
-                
-                scoredTutors.push({ ...tutor, id: tutorId, score: score });
+                scoredTutors.push({ ...tutor, id: doc.id, score: score });
             }
         });
 
-        // Sort by highest score first
         scoredTutors.sort((a, b) => b.score - a.score);
-
-        // Render Results
         resultsDiv.innerHTML = "";
+        
         if(scoredTutors.length === 0) {
-            resultsDiv.innerHTML = "<p>No matching tutors found.</p>";
+            resultsDiv.innerHTML = "<div class='alert alert-warning'>No matches found. Try different keywords.</div>";
             return;
         }
 
         scoredTutors.slice(0, 5).forEach(t => {
-            const matchPercent = Math.min(100, Math.floor(t.score * 5)); // Fake percentage for UX
             resultsDiv.innerHTML += `
             <a href="#" onclick="startChat('${t.id}', '${t.firstName}')" class="list-group-item list-group-item-action">
-                <div class="d-flex w-100 justify-content-between">
+                <div class="d-flex justify-content-between">
                     <h5 class="mb-1">${t.firstName} ${t.lastName}</h5>
-                    <span class="badge bg-success">${matchPercent}% Match</span>
+                    <span class="badge bg-success">Match</span>
                 </div>
-                <p class="mb-1 small">${t.education}</p>
+                <p class="mb-1 small text-muted">${t.education}</p>
                 <small class="text-primary">Click to Chat</small>
             </a>`;
         });
     });
 }
 
-// --- 6. CHAT LOGIC ---
-
+// --- 6. CHAT FUNCTIONALITY ---
 function startChat(otherId, otherName) {
     const user = auth.currentUser;
-    if(!user) {
-        alert("You must be logged in to chat.");
-        return;
-    }
-
-    const currentId = user.uid;
-    // Create a unique chat ID based on alphabetical order of UIDs (so A->B and B->A is same Chat ID)
-    const chatId = [currentId, otherId].sort().join('_');
+    if(!user) return;
+    const chatId = [user.uid, otherId].sort().join('_');
     
-    // Create/Update Chat Metadata
     db.collection('chats').doc(chatId).set({
-        participants: [currentId, otherId],
-        participantNames: firebase.firestore.FieldValue.arrayUnion(otherName), // Store name for easy display
+        participants: [user.uid, otherId],
+        participantNames: firebase.firestore.FieldValue.arrayUnion(otherName),
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true }).then(() => {
         window.location.href = `chat.html?id=${chatId}&name=${otherName}`;
@@ -304,43 +294,33 @@ function loadChats(uid) {
 
     db.collection('chats').where('participants', 'array-contains', uid).orderBy('lastUpdated', 'desc').onSnapshot(snap => {
         list.innerHTML = "";
-        if(snap.empty) {
-            list.innerHTML = "<div class='text-muted p-2'>No active chats.</div>";
-            return;
-        }
-        
+        if(snap.empty) { list.innerHTML = "<div class='p-3 text-muted text-center'>No active chats.</div>"; return; }
         snap.forEach(doc => {
-            const data = doc.data();
             list.innerHTML += `<a href="chat.html?id=${doc.id}" class="list-group-item list-group-item-action">Open Chat</a>`;
         });
     });
 }
 
-// Chat Page Specifics
 if (window.location.pathname.includes('chat.html')) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const chatId = urlParams.get('id');
-    const chatName = urlParams.get('name');
-    
+    const params = new URLSearchParams(window.location.search);
+    const chatId = params.get('id');
+    const chatName = params.get('name');
     if(chatName) document.getElementById('chat-header').innerText = "Chat with " + chatName;
 
     if(chatId) {
-        // Listen for messages in real-time
         db.collection('chats').doc(chatId).collection('messages').orderBy('timestamp').onSnapshot(snap => {
             const box = document.getElementById('messages-box');
             box.innerHTML = "";
             snap.forEach(doc => {
-                const data = doc.data();
-                const isMe = data.sender === auth.currentUser?.uid;
-                const align = isMe ? 'text-end' : 'text-start';
-                const color = isMe ? 'bg-primary text-white' : 'bg-secondary text-white';
-                
+                const d = doc.data();
+                const isMe = d.sender === auth.currentUser?.uid;
                 box.innerHTML += `
-                <div class="${align} mb-2">
-                    <span class="d-inline-block p-2 rounded ${color}" style="max-width:75%;">${data.text}</span>
+                <div class="${isMe ? 'text-end' : 'text-start'} mb-2">
+                    <span class="d-inline-block p-2 rounded ${isMe ? 'bg-primary text-white' : 'bg-secondary text-white'}" style="max-width:75%;">
+                        ${d.text}
+                    </span>
                 </div>`;
             });
-            // Auto scroll to bottom
             box.scrollTop = box.scrollHeight;
         });
     }
@@ -348,22 +328,12 @@ if (window.location.pathname.includes('chat.html')) {
 
 function sendMessage() {
     const text = document.getElementById('msg-input').value;
-    const urlParams = new URLSearchParams(window.location.search);
-    const chatId = urlParams.get('id');
-    const user = auth.currentUser;
-    
-    if(text && chatId && user) {
+    const chatId = new URLSearchParams(window.location.search).get('id');
+    if(text && chatId) {
         db.collection('chats').doc(chatId).collection('messages').add({
-            text: text,
-            sender: user.uid,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            text: text, sender: auth.currentUser.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-        
-        // Update main chat doc timestamp
-        db.collection('chats').doc(chatId).update({
-            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
+        db.collection('chats').doc(chatId).update({ lastUpdated: firebase.firestore.FieldValue.serverTimestamp() });
         document.getElementById('msg-input').value = "";
     }
 }
