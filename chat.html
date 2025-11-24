@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat - Bright Minds</title>
+    <title>Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <nav class="navbar navbar-dark bg-primary">
+    <nav class="navbar navbar-dark bg-primary shadow-sm">
         <div class="container">
             <a class="navbar-brand" href="index.html">Bright Minds Match</a>
             <a href="#" onclick="history.back()" class="btn btn-sm btn-light">Back</a>
@@ -16,13 +16,18 @@
     </nav>
 
     <div class="container mt-4">
-        <div class="card">
-            <div class="card-header" id="chat-header">Chat</div>
-            <div class="card-body" id="messages-box" style="height: 400px; overflow-y: scroll;">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card shadow">
+                    <div class="card-header bg-white fw-bold" id="chat-header">Chat</div>
+                    <div class="card-body bg-light" id="messages-box" style="height: 400px; overflow-y: scroll;">
+                        <div class="text-center text-muted mt-5">Loading messages...</div>
+                    </div>
+                    <div class="card-footer bg-white d-flex">
+                        <input type="text" id="msg-input" class="form-control me-2" placeholder="Type a message...">
+                        <button onclick="sendMessage()" class="btn btn-primary">Send</button>
+                    </div>
                 </div>
-            <div class="card-footer d-flex">
-                <input type="text" id="msg-input" class="form-control me-2" placeholder="Type a message...">
-                <button onclick="sendMessage()" class="btn btn-primary">Send</button>
             </div>
         </div>
     </div>
@@ -31,6 +36,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics-compat.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
