@@ -9,6 +9,7 @@ const firebaseConfig = {
     measurementId: "G-Y3FHMSR84J"
 };
 
+// Initialize Firebase safely
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
@@ -82,7 +83,7 @@ function tutorSignUp() {
     const fname = document.getElementById('tutor-fname').value;
     const lname = document.getElementById('tutor-lname').value;
     const email = document.getElementById('tutor-email').value;
-    const password = document.getElementById('tutor-signup-pass').value; // NEW: Get password from input
+    const password = document.getElementById('tutor-signup-pass').value;
     
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
@@ -101,7 +102,7 @@ function tutorSignUp() {
     }).catch(err => alert("Error: " + err.message));
 }
 
-// --- 4. TUTOR PROFILE (FIXED SAVING ISSUE) ---
+// --- 4. TUTOR PROFILE (DEBUGGED VERSION) ---
 
 function loadTutorProfile(uid) {
     db.collection('users').doc(uid).get().then(doc => {
@@ -114,7 +115,6 @@ function loadTutorProfile(uid) {
     });
 }
 
-// NEW ASYNC SAVE FUNCTION
 async function saveTutorProfile() {
     const user = auth.currentUser;
     if (!user) return alert("You are not logged in!");
@@ -124,38 +124,46 @@ async function saveTutorProfile() {
     const file = document.getElementById('pfp-upload').files[0];
     const saveBtn = document.getElementById('save-btn');
 
-    // UI Feedback
-    saveBtn.innerText = "Saving...";
+    saveBtn.innerText = "Saving Text...";
     saveBtn.disabled = true;
 
     try {
-        let photoURL = null;
-
-        // 1. Upload Image if exists
-        if (file) {
-            const storageRef = storage.ref('pfps/' + user.uid);
-            await storageRef.put(file);
-            photoURL = await storageRef.getDownloadURL();
-        }
-
-        // 2. Prepare Data
-        const updateData = {
+        // STEP 1: Save Text Info FIRST
+        // This is usually fast. If this fails, it's a Database Rule issue.
+        await db.collection('users').doc(user.uid).update({
             bio: bio,
             education: edu
-        };
-        if (photoURL) updateData.pfp = photoURL;
-
-        // 3. Update Firestore
-        await db.collection('users').doc(user.uid).update(updateData);
+        });
         
+        // STEP 2: Handle Image
+        if (file) {
+            saveBtn.innerText = "Uploading Image...";
+            const storageRef = storage.ref('pfps/' + user.uid);
+            
+            // Upload
+            await storageRef.put(file);
+            
+            // Get URL
+            const url = await storageRef.getDownloadURL();
+            
+            // Save URL to Database
+            await db.collection('users').doc(user.uid).update({ pfp: url });
+            
+            document.getElementById('current-pfp').src = url;
+        }
+
         alert("Profile Saved Successfully!");
 
     } catch (error) {
-        console.error("Save Error:", error);
-        // This will tell you exactly why it's failing
-        alert("Error saving profile: " + error.message + "\n\nTip: If this is a permission error, check your Firebase Storage Rules.");
+        console.error(error);
+        if(error.code === 'storage/unauthorized') {
+            alert("Error: Permission Denied. Please check your Firebase STORAGE Rules.");
+        } else if (error.code === 'permission-denied') {
+             alert("Error: Permission Denied. Please check your Firebase DATABASE Rules.");
+        } else {
+            alert("Error saving: " + error.message);
+        }
     } finally {
-        // Always reset button
         saveBtn.innerText = "Save Profile & Go Live";
         saveBtn.disabled = false;
     }
