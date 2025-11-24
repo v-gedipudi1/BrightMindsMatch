@@ -1,0 +1,16 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+.card {
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: none;
+}
+.navbar-brand {
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+#messages-box {
+    background-color: #fff;
+    border: 1px solid #ddd;
+}
