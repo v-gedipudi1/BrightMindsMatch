@@ -50,7 +50,7 @@ auth.onAuthStateChanged(user => {
         
         if (window.location.pathname.includes('tutor.html')) loadTutorProfile(user.uid);
         
-        // Load chats with user info
+        // Load chats
         loadChats(user);
     } else {
         if (dashboardSection) dashboardSection.style.display = 'none';
@@ -79,6 +79,7 @@ function handleLogin(type) {
         });
 }
 
+// Student Signup with Explicit Name Saving
 function studentSignUp() {
     const fname = document.getElementById('stu-fname').value;
     const lname = document.getElementById('stu-lname').value;
@@ -87,16 +88,18 @@ function studentSignUp() {
 
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
-    auth.createUserWithEmailAndPassword(email, password).then((cred) => {
-        // Important: Update Profile Name so Chat knows who we are
-        cred.user.updateProfile({ displayName: fname + " " + lname });
+    auth.createUserWithEmailAndPassword(email, password).then(async (cred) => {
+        // 1. Force update of the "Display Name" in Auth
+        await cred.user.updateProfile({ displayName: fname + " " + lname });
         
+        // 2. Save to Database
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname, lastName: lname, email: email, role: 'student'
         });
     }).then(() => alert("Student account created!")).catch(err => alert(err.message));
 }
 
+// Tutor Signup with Explicit Name Saving
 function tutorSignUp() {
     const fname = document.getElementById('tutor-fname').value;
     const lname = document.getElementById('tutor-lname').value;
@@ -105,10 +108,11 @@ function tutorSignUp() {
     
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
-    auth.createUserWithEmailAndPassword(email, password).then((cred) => {
-        // Important: Update Profile Name
-        cred.user.updateProfile({ displayName: fname + " " + lname });
+    auth.createUserWithEmailAndPassword(email, password).then(async (cred) => {
+        // 1. Force update of the "Display Name" in Auth
+        await cred.user.updateProfile({ displayName: fname + " " + lname });
 
+        // 2. Save to Database
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname,
             lastName: lname,
@@ -125,11 +129,12 @@ function tutorSignUp() {
 
 // --- 4. TUTOR PROFILE (PREVIEW & SAVE) ---
 
-// New: Instant Image Preview
+// Instant Image Preview Function
 function previewImage(input) {
     if (input.files && input.files[0]) {
         var reader = new FileReader();
         reader.onload = function(e) {
+            // Update the image src immediately
             document.getElementById('current-pfp').src = e.target.result;
         }
         reader.readAsDataURL(input.files[0]);
@@ -163,26 +168,26 @@ async function saveTutorProfile() {
         // 1. Save Text
         await db.collection('users').doc(user.uid).update({ bio: bio, education: edu });
 
-        // 2. Save Image (With Time-out check)
+        // 2. Save Image (If selected)
         if (file) {
-            saveBtn.innerText = "Uploading Image...";
+            saveBtn.innerText = "Uploading Image (This may take a moment)...";
             
             const storageRef = storage.ref('pfps/' + user.uid);
             
-            // Safety timeout: If upload takes > 10s, likely permission error
-            const uploadTask = storageRef.put(file);
+            // Upload
+            await storageRef.put(file);
             
-            // Wait for upload
-            await uploadTask;
-            const url = await uploadTask.snapshot.ref.getDownloadURL();
+            // Get URL
+            const url = await storageRef.getDownloadURL();
             
+            // Save URL
             await db.collection('users').doc(user.uid).update({ pfp: url });
         }
         alert("Profile Saved Successfully!");
     } catch (error) {
         console.error(error);
         if(error.code === 'storage/unauthorized' || error.message.includes('permission')) {
-             alert("Profile Text Saved!\n\nBUT Image Upload Failed.\nReason: Permission Denied.\n\nFIX: Go to Firebase Console > Storage > Rules and change 'allow read, write: if false;' to 'true'.");
+             alert("Profile Text Saved!\n\nBUT Image Upload Failed.\nREASON: Firebase Storage Permissions are blocked.\n\nFIX: Go to Firebase Console > Storage > Rules. Change 'allow read, write: if false;' to 'if true;'. Publish, wait 1 minute, and try again.");
         } else {
              alert("Error: " + error.message);
         }
@@ -266,20 +271,24 @@ function runAIMatch() {
     });
 }
 
-// --- 6. CHAT FUNCTIONALITY (WITH NAMES) ---
+// --- 6. CHAT FUNCTIONALITY (CORRECT NAMES LOGIC) ---
 
 function startChat(otherId, otherName) {
     const user = auth.currentUser;
     if(!user) return alert("Please log in.");
     const chatId = [user.uid, otherId].sort().join('_');
     
-    // Get my name
+    // Get my name from Auth Profile
     const myName = (user.displayName) ? user.displayName : "User";
+
+    // Create a MAP of names: { "UserID1": "Name1", "UserID2": "Name2" }
+    const nameMap = {};
+    nameMap[user.uid] = myName;
+    nameMap[otherId] = otherName;
 
     db.collection('chats').doc(chatId).set({
         participants: [user.uid, otherId],
-        // Save BOTH names so we can display them later
-        participantNames: firebase.firestore.FieldValue.arrayUnion(otherName, myName),
+        names: nameMap, // NEW: Save the map
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true }).then(() => {
         window.location.href = `chat.html?id=${chatId}&name=${otherName}`;
@@ -297,23 +306,21 @@ function loadChats(currentUser) {
         snap.forEach(doc => {
             const data = doc.data();
             let displayName = "Chat";
-            
-            // Logic to find the name that isn't mine
-            if (data.participantNames && Array.isArray(data.participantNames)) {
-                // We try to find a name that is NOT the current user's display name
-                // If we don't know our own name yet, we just show all names joined
-                const otherNames = data.participantNames.filter(n => n !== currentUser.displayName);
-                
-                if (otherNames.length > 0) {
-                    displayName = otherNames[0]; // Show the first name that isn't mine
-                } else {
-                    displayName = data.participantNames.join(', '); // Fallback
-                }
+
+            // LOGIC: Find the ID in the participants array that is NOT me.
+            const otherId = data.participants.find(uid => uid !== currentUser.uid);
+
+            // LOGIC: Look up that ID in the 'names' map
+            if (otherId && data.names && data.names[otherId]) {
+                displayName = data.names[otherId];
+            } else if (data.participantNames) {
+                // Fallback for older chats created before this update
+                displayName = data.participantNames.join(', ');
             }
 
             list.innerHTML += `
             <a href="chat.html?id=${doc.id}&name=${displayName}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                <span>${displayName}</span>
+                <span class="fw-bold">${displayName}</span>
                 <span class="badge bg-primary rounded-pill">Open</span>
             </a>`;
         });
