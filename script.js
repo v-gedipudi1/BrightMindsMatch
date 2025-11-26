@@ -2,7 +2,7 @@
 window.onerror = function(message, source, lineno, colno, error) {
     console.error(error);
     if(message && (message.includes("firebase") || message.includes("auth"))) {
-        alert("System Error: " + message);
+        if(!message.includes("interaction")) alert("System Error: " + message);
     }
 };
 
@@ -28,7 +28,7 @@ if (typeof firebase === 'undefined') {
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
+// Note: We removed 'storage' because we are using the Base64 workaround
 
 console.log("System Loaded.");
 
@@ -79,7 +79,6 @@ function handleLogin(type) {
         });
 }
 
-// Student Signup with Explicit Name Saving
 function studentSignUp() {
     const fname = document.getElementById('stu-fname').value;
     const lname = document.getElementById('stu-lname').value;
@@ -89,17 +88,14 @@ function studentSignUp() {
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
     auth.createUserWithEmailAndPassword(email, password).then(async (cred) => {
-        // 1. Force update of the "Display Name" in Auth
         await cred.user.updateProfile({ displayName: fname + " " + lname });
         
-        // 2. Save to Database
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname, lastName: lname, email: email, role: 'student'
         });
     }).then(() => alert("Student account created!")).catch(err => alert(err.message));
 }
 
-// Tutor Signup with Explicit Name Saving
 function tutorSignUp() {
     const fname = document.getElementById('tutor-fname').value;
     const lname = document.getElementById('tutor-lname').value;
@@ -109,10 +105,8 @@ function tutorSignUp() {
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
     auth.createUserWithEmailAndPassword(email, password).then(async (cred) => {
-        // 1. Force update of the "Display Name" in Auth
         await cred.user.updateProfile({ displayName: fname + " " + lname });
 
-        // 2. Save to Database
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname,
             lastName: lname,
@@ -127,14 +121,12 @@ function tutorSignUp() {
     }).catch(err => alert("Error: " + err.message));
 }
 
-// --- 4. TUTOR PROFILE (PREVIEW & SAVE) ---
+// --- 4. TUTOR PROFILE (BASE64 WORKAROUND) ---
 
-// Instant Image Preview Function
 function previewImage(input) {
     if (input.files && input.files[0]) {
         var reader = new FileReader();
         reader.onload = function(e) {
-            // Update the image src immediately
             document.getElementById('current-pfp').src = e.target.result;
         }
         reader.readAsDataURL(input.files[0]);
@@ -147,10 +139,22 @@ function loadTutorProfile(uid) {
             const data = doc.data();
             if(document.getElementById('tutor-bio')) document.getElementById('tutor-bio').value = data.bio || "";
             if(document.getElementById('tutor-edu')) document.getElementById('tutor-edu').value = data.education || "";
-            if(document.getElementById('current-pfp') && data.pfp) document.getElementById('current-pfp').src = data.pfp;
+            
+            // Check if PFP exists and is valid
+            if(document.getElementById('current-pfp') && data.pfp) {
+                document.getElementById('current-pfp').src = data.pfp;
+            }
         }
     });
 }
+
+// Helper to convert image file to text string
+const toBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+});
 
 async function saveTutorProfile() {
     const user = auth.currentUser;
@@ -161,36 +165,32 @@ async function saveTutorProfile() {
     const file = document.getElementById('pfp-upload').files[0];
     const saveBtn = document.getElementById('save-btn');
 
-    saveBtn.innerText = "Saving Text...";
+    saveBtn.innerText = "Saving...";
     saveBtn.disabled = true;
 
     try {
-        // 1. Save Text
-        await db.collection('users').doc(user.uid).update({ bio: bio, education: edu });
+        let updateData = { bio: bio, education: edu };
 
-        // 2. Save Image (If selected)
+        // Handle Image via Base64 (No Storage Bucket needed)
         if (file) {
-            saveBtn.innerText = "Uploading Image (This may take a moment)...";
-            
-            const storageRef = storage.ref('pfps/' + user.uid);
-            
-            // Upload
-            await storageRef.put(file);
-            
-            // Get URL
-            const url = await storageRef.getDownloadURL();
-            
-            // Save URL
-            await db.collection('users').doc(user.uid).update({ pfp: url });
+            if (file.size > 800000) { // Limit to ~800KB
+                alert("Image is too large! Please choose a smaller image (under 1MB).");
+                saveBtn.innerText = "Save Profile";
+                saveBtn.disabled = false;
+                return; 
+            }
+            saveBtn.innerText = "Processing Image...";
+            const base64String = await toBase64(file);
+            updateData.pfp = base64String;
         }
+
+        // Save everything to Firestore
+        await db.collection('users').doc(user.uid).update(updateData);
+        
         alert("Profile Saved Successfully!");
     } catch (error) {
         console.error(error);
-        if(error.code === 'storage/unauthorized' || error.message.includes('permission')) {
-             alert("Profile Text Saved!\n\nBUT Image Upload Failed.\nREASON: Firebase Storage Permissions are blocked.\n\nFIX: Go to Firebase Console > Storage > Rules. Change 'allow read, write: if false;' to 'if true;'. Publish, wait 1 minute, and try again.");
-        } else {
-             alert("Error: " + error.message);
-        }
+        alert("Error: " + error.message);
     } finally {
         saveBtn.innerText = "Save Profile & Go Live";
         saveBtn.disabled = false;
@@ -271,24 +271,26 @@ function runAIMatch() {
     });
 }
 
-// --- 6. CHAT FUNCTIONALITY (CORRECT NAMES LOGIC) ---
+// --- 6. CHAT FUNCTIONALITY (CORRECT NAMES) ---
 
 function startChat(otherId, otherName) {
     const user = auth.currentUser;
     if(!user) return alert("Please log in.");
     const chatId = [user.uid, otherId].sort().join('_');
     
-    // Get my name from Auth Profile
-    const myName = (user.displayName) ? user.displayName : "User";
+    let myName = "User";
+    if(user.displayName) {
+        myName = user.displayName;
+    }
 
-    // Create a MAP of names: { "UserID1": "Name1", "UserID2": "Name2" }
+    // MAP: Key = UserID, Value = Name
     const nameMap = {};
     nameMap[user.uid] = myName;
     nameMap[otherId] = otherName;
 
     db.collection('chats').doc(chatId).set({
         participants: [user.uid, otherId],
-        names: nameMap, // NEW: Save the map
+        names: nameMap,
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true }).then(() => {
         window.location.href = `chat.html?id=${chatId}&name=${otherName}`;
@@ -307,14 +309,11 @@ function loadChats(currentUser) {
             const data = doc.data();
             let displayName = "Chat";
 
-            // LOGIC: Find the ID in the participants array that is NOT me.
             const otherId = data.participants.find(uid => uid !== currentUser.uid);
 
-            // LOGIC: Look up that ID in the 'names' map
             if (otherId && data.names && data.names[otherId]) {
                 displayName = data.names[otherId];
             } else if (data.participantNames) {
-                // Fallback for older chats created before this update
                 displayName = data.participantNames.join(', ');
             }
 
