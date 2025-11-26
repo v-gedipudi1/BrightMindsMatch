@@ -1,7 +1,6 @@
-// --- ERROR CATCHER (Helps debug "Nothing working") ---
+// --- ERROR CATCHER ---
 window.onerror = function(message, source, lineno, colno, error) {
     console.error(error);
-    // Only alert on critical errors to avoid annoying the user
     if(message && (message.includes("firebase") || message.includes("auth"))) {
         alert("System Error: " + message);
     }
@@ -18,11 +17,10 @@ const firebaseConfig = {
     measurementId: "G-Y3FHMSR84J"
 };
 
-// Check if Firebase is loaded
+// Initialize
 if (typeof firebase === 'undefined') {
-    alert("Critical Error: Firebase SDK not loaded. Check your HTML file.");
+    alert("Critical Error: Firebase SDK not loaded.");
 } else {
-    // Initialize safely
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
     }
@@ -41,7 +39,6 @@ auth.onAuthStateChanged(user => {
     const logoutBtn = document.getElementById('logout-btn');
 
     if (user) {
-        console.log("User logged in:", user.uid);
         if (authSection) authSection.style.display = 'none';
         if (dashboardSection) dashboardSection.style.display = 'block';
         if (logoutBtn) {
@@ -51,20 +48,17 @@ auth.onAuthStateChanged(user => {
             };
         }
         
-        // Load data specific to the page
         if (window.location.pathname.includes('tutor.html')) loadTutorProfile(user.uid);
         
-        // Load chats for everyone
-        loadChats(user.uid);
+        // Load chats with user info
+        loadChats(user);
     } else {
-        console.log("No user logged in.");
         if (dashboardSection) dashboardSection.style.display = 'none';
         if (authSection) authSection.style.display = 'block';
     }
 });
 
-// --- 3. AUTHENTICATION FUNCTIONS ---
-
+// --- 3. AUTHENTICATION ---
 function handleLogin(type) {
     const emailId = type === 'tutor' ? 'tutor-login-email' : 'stu-login-email';
     const passId = type === 'tutor' ? 'tutor-login-pass' : 'stu-login-pass';
@@ -75,13 +69,10 @@ function handleLogin(type) {
     const btn = document.getElementById(btnId);
 
     if (!email || !password) return alert("Please fill in all fields.");
-
     if(btn) { btn.innerText = "Logging in..."; btn.disabled = true; }
 
     auth.signInWithEmailAndPassword(email, password)
-        .then(() => {
-            console.log("Login Success");
-        })
+        .then(() => console.log("Login Success"))
         .catch(err => {
             alert("Error: " + err.message);
             if(btn) { btn.innerText = "Login"; btn.disabled = false; }
@@ -97,6 +88,9 @@ function studentSignUp() {
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
     auth.createUserWithEmailAndPassword(email, password).then((cred) => {
+        // Important: Update Profile Name so Chat knows who we are
+        cred.user.updateProfile({ displayName: fname + " " + lname });
+        
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname, lastName: lname, email: email, role: 'student'
         });
@@ -112,6 +106,9 @@ function tutorSignUp() {
     if(!fname || !lname || !email || !password) return alert("All fields required");
 
     auth.createUserWithEmailAndPassword(email, password).then((cred) => {
+        // Important: Update Profile Name
+        cred.user.updateProfile({ displayName: fname + " " + lname });
+
         return db.collection('users').doc(cred.user.uid).set({
             firstName: fname,
             lastName: lname,
@@ -126,7 +123,18 @@ function tutorSignUp() {
     }).catch(err => alert("Error: " + err.message));
 }
 
-// --- 4. TUTOR PROFILE (ROBUST SAVE) ---
+// --- 4. TUTOR PROFILE (PREVIEW & SAVE) ---
+
+// New: Instant Image Preview
+function previewImage(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('current-pfp').src = e.target.result;
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
 
 function loadTutorProfile(uid) {
     db.collection('users').doc(uid).get().then(doc => {
@@ -148,32 +156,33 @@ async function saveTutorProfile() {
     const file = document.getElementById('pfp-upload').files[0];
     const saveBtn = document.getElementById('save-btn');
 
-    saveBtn.innerText = "Saving...";
+    saveBtn.innerText = "Saving Text...";
     saveBtn.disabled = true;
 
     try {
-        // 1. Save Text Data First
-        await db.collection('users').doc(user.uid).update({
-            bio: bio,
-            education: edu
-        });
+        // 1. Save Text
+        await db.collection('users').doc(user.uid).update({ bio: bio, education: edu });
 
-        // 2. Try Image Upload
+        // 2. Save Image (With Time-out check)
         if (file) {
             saveBtn.innerText = "Uploading Image...";
+            
             const storageRef = storage.ref('pfps/' + user.uid);
-            await storageRef.put(file);
-            const url = await storageRef.getDownloadURL();
+            
+            // Safety timeout: If upload takes > 10s, likely permission error
+            const uploadTask = storageRef.put(file);
+            
+            // Wait for upload
+            await uploadTask;
+            const url = await uploadTask.snapshot.ref.getDownloadURL();
+            
             await db.collection('users').doc(user.uid).update({ pfp: url });
-            document.getElementById('current-pfp').src = url;
         }
-
-        alert("Profile Saved!");
-
+        alert("Profile Saved Successfully!");
     } catch (error) {
-        console.error("Save Error:", error);
-        if(error.code === 'storage/unauthorized') {
-             alert("Profile Text Saved! \n\nImage upload failed (Permission Denied). Check Firebase Storage Rules.");
+        console.error(error);
+        if(error.code === 'storage/unauthorized' || error.message.includes('permission')) {
+             alert("Profile Text Saved!\n\nBUT Image Upload Failed.\nReason: Permission Denied.\n\nFIX: Go to Firebase Console > Storage > Rules and change 'allow read, write: if false;' to 'true'.");
         } else {
              alert("Error: " + error.message);
         }
@@ -185,38 +194,34 @@ async function saveTutorProfile() {
 
 // --- 5. HOMEPAGE & MATCHING ---
 
-// Only run this on index.html
 if (document.getElementById('tutor-list')) {
     const list = document.getElementById('tutor-list');
-    
     db.collection('users').where('role', '==', 'tutor').get()
     .then(snapshot => {
         list.innerHTML = "";
         if(snapshot.empty) { 
-            list.innerHTML = "<div class='col-12 text-center'><p>No tutors found yet.</p></div>"; 
+            list.innerHTML = "<div class='col-12 text-center'><div class='alert alert-warning'>No tutors found.</div></div>"; 
             return; 
         }
         
         snapshot.forEach(doc => {
             const data = doc.data();
-            // We check if bio exists to ensure they finished their profile
-            if (data.bio) {
-                list.innerHTML += `
-                <div class="col-md-4">
-                    <div class="card h-100 shadow-sm">
-                        <img src="${data.pfp || 'https://via.placeholder.com/150'}" class="card-img-top" style="height:200px; object-fit:cover;">
-                        <div class="card-body">
-                            <h5 class="card-title">${data.firstName} ${data.lastName}</h5>
-                            <h6 class="text-primary mb-2">${data.education || 'Tutor'}</h6>
-                            <p class="card-text text-muted">${data.bio.substring(0, 100)}...</p>
-                        </div>
+            list.innerHTML += `
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm">
+                    <img src="${data.pfp || 'https://via.placeholder.com/150'}" class="card-img-top" style="height:200px; object-fit:cover;">
+                    <div class="card-body">
+                        <h5 class="card-title">${data.firstName} ${data.lastName}</h5>
+                        <h6 class="text-primary mb-2">${data.education || 'Tutor'}</h6>
+                        <p class="card-text text-muted">${data.bio ? data.bio.substring(0, 100) + '...' : 'No bio added.'}</p>
                     </div>
-                </div>`;
-            }
+                </div>
+            </div>`;
         });
     })
     .catch(error => {
-        console.error("Error loading tutors:", error);
+        console.error(error);
+        list.innerHTML = "<div class='alert alert-danger'>Error loading tutors. Check console.</div>";
     });
 }
 
@@ -249,7 +254,7 @@ function runAIMatch() {
 
         scoredTutors.slice(0, 5).forEach(t => {
             resultsDiv.innerHTML += `
-            <a href="#" onclick="startChat('${t.id}', '${t.firstName}')" class="list-group-item list-group-item-action">
+            <a href="#" onclick="startChat('${t.id}', '${t.firstName} ${t.lastName}')" class="list-group-item list-group-item-action">
                 <div class="d-flex justify-content-between">
                     <h5 class="mb-1">${t.firstName} ${t.lastName}</h5>
                     <span class="badge bg-success">Match</span>
@@ -261,70 +266,74 @@ function runAIMatch() {
     });
 }
 
-// --- 6. CHAT FUNCTIONALITY ---
+// --- 6. CHAT FUNCTIONALITY (WITH NAMES) ---
 
 function startChat(otherId, otherName) {
     const user = auth.currentUser;
-    if(!user) return alert("Please log in to chat.");
-    
-    // Sort UIDs to ensure the Chat ID is always the same for both people
+    if(!user) return alert("Please log in.");
     const chatId = [user.uid, otherId].sort().join('_');
     
+    // Get my name
+    const myName = (user.displayName) ? user.displayName : "User";
+
     db.collection('chats').doc(chatId).set({
         participants: [user.uid, otherId],
-        // Use arrayUnion so we don't overwrite existing names
-        participantNames: firebase.firestore.FieldValue.arrayUnion(otherName),
+        // Save BOTH names so we can display them later
+        participantNames: firebase.firestore.FieldValue.arrayUnion(otherName, myName),
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true }).then(() => {
         window.location.href = `chat.html?id=${chatId}&name=${otherName}`;
     });
 }
 
-function loadChats(uid) {
+function loadChats(currentUser) {
     const list = document.getElementById('chat-list');
     if(!list) return;
 
-    // SIMPLIFIED QUERY (Removed orderBy to prevent Index Errors)
-    db.collection('chats')
-      .where('participants', 'array-contains', uid)
-      .onSnapshot(snap => {
+    db.collection('chats').where('participants', 'array-contains', currentUser.uid).onSnapshot(snap => {
         list.innerHTML = "";
         if(snap.empty) { list.innerHTML = "<div class='p-3 text-muted text-center'>No active chats.</div>"; return; }
         
         snap.forEach(doc => {
-            // Create a simple link for the chat
-            list.innerHTML += `<a href="chat.html?id=${doc.id}" class="list-group-item list-group-item-action">Open Chat</a>`;
+            const data = doc.data();
+            let displayName = "Chat";
+            
+            // Logic to find the name that isn't mine
+            if (data.participantNames && Array.isArray(data.participantNames)) {
+                // We try to find a name that is NOT the current user's display name
+                // If we don't know our own name yet, we just show all names joined
+                const otherNames = data.participantNames.filter(n => n !== currentUser.displayName);
+                
+                if (otherNames.length > 0) {
+                    displayName = otherNames[0]; // Show the first name that isn't mine
+                } else {
+                    displayName = data.participantNames.join(', '); // Fallback
+                }
+            }
+
+            list.innerHTML += `
+            <a href="chat.html?id=${doc.id}&name=${displayName}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                <span>${displayName}</span>
+                <span class="badge bg-primary rounded-pill">Open</span>
+            </a>`;
         });
-    }, error => {
-        console.error("Error loading chats:", error);
     });
 }
 
-// Chat Page Logic
 if (window.location.pathname.includes('chat.html')) {
     const params = new URLSearchParams(window.location.search);
     const chatId = params.get('id');
     const chatName = params.get('name');
-    
-    if(chatName && document.getElementById('chat-header')) {
-        document.getElementById('chat-header').innerText = "Chat with " + chatName;
-    }
+    if(chatName && document.getElementById('chat-header')) document.getElementById('chat-header').innerText = "Chat with " + chatName;
 
     if(chatId) {
-        db.collection('chats').doc(chatId).collection('messages')
-          .orderBy('timestamp')
-          .onSnapshot(snap => {
+        db.collection('chats').doc(chatId).collection('messages').orderBy('timestamp').onSnapshot(snap => {
             const box = document.getElementById('messages-box');
             box.innerHTML = "";
             snap.forEach(doc => {
                 const d = doc.data();
                 const isMe = d.sender === auth.currentUser?.uid;
-                box.innerHTML += `
-                <div class="${isMe ? 'text-end' : 'text-start'} mb-2">
-                    <span class="d-inline-block p-2 rounded ${isMe ? 'bg-primary text-white' : 'bg-secondary text-white'}" style="max-width:75%;">
-                        ${d.text}
-                    </span>
-                </div>`;
+                box.innerHTML += `<div class="${isMe ? 'text-end' : 'text-start'} mb-2"><span class="d-inline-block p-2 rounded ${isMe ? 'bg-primary text-white' : 'bg-secondary text-white'}">${d.text}</span></div>`;
             });
             box.scrollTop = box.scrollHeight;
         });
@@ -335,19 +344,11 @@ function sendMessage() {
     const text = document.getElementById('msg-input').value;
     const chatId = new URLSearchParams(window.location.search).get('id');
     const user = auth.currentUser;
-    
     if(text && chatId && user) {
         db.collection('chats').doc(chatId).collection('messages').add({
-            text: text, 
-            sender: user.uid, 
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            text: text, sender: user.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
-        
-        // Update main chat timestamp
-        db.collection('chats').doc(chatId).update({ 
-            lastUpdated: firebase.firestore.FieldValue.serverTimestamp() 
-        });
-        
+        db.collection('chats').doc(chatId).update({ lastUpdated: firebase.firestore.FieldValue.serverTimestamp() });
         document.getElementById('msg-input').value = "";
     }
 }
